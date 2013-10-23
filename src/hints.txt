@@ -1,0 +1,63 @@
+формат даннах: частота, канал1, канал2 (второкй канал можно игнорировать)
+частота в герцах
+отклик в вольтах
+
+
+hint: explore QSignalMapper
+
+custom item model could be implemented based on QFileSystemModel/QDirModel/QDir http://qt-project.org/doc/qt-4.8/itemviews-dirview.html
+
+
+с помощью QString::fromUtf8("Поривет, Мир!") можно получить строку с юникодом
+QFileInfo(FileName).baseName()
+
+//use following to convert MSExcel TXT into CVS
+//cat dataset.txt | sed -E 's/[[:blank:]]/ /g' | sed -E 's/,/\./g' | sed 's%\([0-9]*\) \([0-9]*\) \([0-9,]*\)%\2.0,\3%'
+
+friedberg example provide plot zooming code
+
+QScrollArea could be used to add scrollbars
+
+I'm trying to to put buttons on items in a QTreeView. I don't mean using buttons as an editor when clicked, but just have the button always there on some items to perform a quick action on the item. For example, something like the little "Eject" button that appears next to removable devices in the left-hand library tree in iTunes.
+
+Use void QAbstractItemView::setIndexWidget ( const QModelIndex & index, QWidget * widget )
+See also the warning in the documentation that you have to create a delegate if you want anything sensible with the widget. Generally, adding widgets to an itemview is a bad idea because it does not scale. If you 1000 rows, you need 1000 widgets in a naive implementation. The better implementation is to have only as much widgets as currently visibie and reuse widgets that get out of view for the appearing rows during scrolling. Basically, that is what the delegate does.
+
+You must create your own delegate and applay it for your QTreeView. To create delegate you must subclass QStyledItemDelegate and re-implement its QStyledItemDelegate::paint(...) method in that way what you want, also, don't forget about re-implementing QStyledItemDelegate::sizeHint(...) method if needed, of course. Also, you may need to re-implement QStyledItemDelegate::createEditor(...) method.
+
+To apply created delegate to your view (QTreeView) you must create delegate and call QTreeView's method setItemDelegate (or setItemDelegateForColumn, or setItemDelegateForRow).
+
+
+
+button->setFlat(TRUE);
+
+button->setStyleSheet("* { background-color: rgba(0,125,0,0) }");
+
+
+
+Qt::ActionsContextMenu policy is the simplest way to construct a static context menu. All you need to do is to add actions with QWidget::addAction() and the rest is done automatically. However, if the context menu needs to be dynamic for example depending on the position of the event, then use Qt::DefaultContextMenu policy.
+
+
+
+
+files associations could be changed through:
+vi /usr/share/applications/defaults.list
+vi ~/.local/share/applications/mimeapps.list
+use "locate '*.desktop' | less" to find availabel apps
+
+
+//multiplying the id by the golden ratio (phi) generates numbers that tend to be evenly distributed.
+double Phi = (1 + sqrt(5))/2;
+double N = Id*Phi - floor(Id * Phi);
+int Hue = floor(N * 256);
+return hsv_to_rgb(Hue, 200, 255);*/
+
+
+
+QSharedDataPointer
+
+Now this is a nice little class. It’s actually by far the most important of the smart pointer classes in Qt for its ingeniuty: it provides implicit sharing, with thread-safe copy-on-write. It requires that your class have a member called ref, which offers a function called ref() for increasing the reference count, and another called deref() that decreases that reference count and returns false when it drops to zero. If you derive your class from QSharedData, you get exactly that. Moreover, the size of a QSharedDataPointer object is exactly the size of a pointer. That means you can replace normal pointers with it in your code without breaking Binary Compatibility.
+
+This class is the basis of all Qt value-type, implicit-shared, thread-safe copy-on-write recent classes, like QNetworkProxy. The only reason why it isn’t used in the base classes like QByteArray, QString and QList is that those classes were developed before this class was made. There’s nothing technically stopping the retrofitting of those classes with QSharedDataPointer.
+
+So QSharedDataPointer is a strong smart pointer class, sharing data.

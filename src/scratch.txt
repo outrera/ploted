@@ -1,0 +1,769 @@
+static const double Pi = 3.14159265;
+static double sawtooth(double X) {return ((X - ceil( (X+Pi) / (2*Pi))*2*Pi) + 2*Pi) / Pi;}
+static double triwave(double X) {return (fabs(sawtooth(X))-0.5)*2;}
+
+static double bleepwave(double X) {
+    int t = (X+50)*100;
+    return (double)(t*(((t>>12)|(t>>8))&(63&(t>>4))))/300000;
+}
+
+
+
+
+class plotModel : public QAbstractItemModel
+{
+    Q_OBJECT
+
+public:
+    plotModel(QObject *parent = 0);
+    ~plotModel();
+
+    QVariant data(const QModelIndex &index, int role) const;
+    Qt::ItemFlags flags(const QModelIndex &index) const;
+    QVariant headerData(int section, Qt::Orientation orientation,
+                        int role = Qt::DisplayRole) const;
+    QModelIndex index(int row, int column,
+                      const QModelIndex &parent = QModelIndex()) const;
+    QModelIndex parent(const QModelIndex &index) const;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const;
+    void addItem(curve *PD);
+
+    QVector<curve*> plots();
+
+private:
+    plotItem *rootItem;
+};
+
+
+class plotItem
+{
+public:
+    plotItem(curve *D, plotItem *parent);
+    ~plotItem();
+
+    void appendChild(plotItem *child);
+
+    plotItem *child(int row);
+    int childCount() const;
+    curve *data() const;
+    int row() const;
+    plotItem *parent();
+
+private:
+    QList<plotItem*> childItems;
+    plotItem *parentItem;
+    curve *Data;
+};
+
+
+
+plotItem::plotItem(curve *D, plotItem *parent)
+{
+    parentItem = parent;
+    Data = D;
+}
+
+plotItem::~plotItem()
+{
+    qDeleteAll(childItems);
+}
+
+void plotItem::appendChild(plotItem *item)
+{
+    childItems.append(item);
+}
+
+plotItem *plotItem::child(int row)
+{
+     return childItems.value(row);
+}
+
+int plotItem::childCount() const
+{
+     return childItems.count();
+}
+
+int plotItem::row() const
+{
+     if (parentItem)
+         return parentItem->childItems.indexOf(const_cast<plotItem*>(this));
+
+     return 0;
+}
+
+curve *plotItem::data() const
+{
+    return Data;
+}
+
+plotItem *plotItem::parent()
+{
+    return parentItem;
+}
+
+
+
+
+
+plotModel::plotModel(QObject *parent)
+    : QAbstractItemModel(parent)
+{
+    rootItem = new plotItem(0, 0);
+}
+
+plotModel::~plotModel()
+{
+    delete rootItem;
+}
+
+QModelIndex plotModel::index(int row, int column, const QModelIndex &parent)
+            const
+{
+    if (!hasIndex(row, column, parent))
+        return QModelIndex();
+
+    plotItem *parentItem;
+
+    if (!parent.isValid())
+        parentItem = rootItem;
+    else
+        parentItem = static_cast<plotItem*>(parent.internalPointer());
+
+    plotItem *childItem = parentItem->child(row);
+    if (childItem)
+        return createIndex(row, column, childItem);
+    else
+        return QModelIndex();
+}
+
+QModelIndex plotModel::parent(const QModelIndex &index) const
+{
+    if (!index.isValid())
+        return QModelIndex();
+
+    plotItem *childItem = static_cast<plotItem*>(index.internalPointer());
+    plotItem *parentItem = childItem->parent();
+
+    if (parentItem == rootItem)
+        return QModelIndex();
+
+    return createIndex(parentItem->row(), 0, parentItem);
+}
+
+int plotModel::rowCount(const QModelIndex &parent) const
+{
+    plotItem *parentItem;
+    if (parent.column() > 0)
+        return 0;
+
+    if (!parent.isValid())
+        parentItem = rootItem;
+    else
+        parentItem = static_cast<plotItem*>(parent.internalPointer());
+
+    return parentItem->childCount();
+}
+
+int plotModel::columnCount(const QModelIndex &) const
+{
+    return 2;
+
+    /*if (parent.isValid())
+        return static_cast<TreeItem*>(parent.internalPointer())->columnCount();
+    else
+        return rootItem->columnCount();*/
+}
+
+QVariant plotModel::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid())
+        return QVariant();
+
+    plotItem *item = static_cast<plotItem*>(index.internalPointer());
+
+    curve *PD = item->data();
+    if (role == Qt::DisplayRole) {
+        if (index.column() == 0) return PD->name();
+        else if (index.column() == 1) return PD->op();
+        return QVariant();
+    }
+    else if (role == Qt::UserRole) {
+        return qVariantFromValue((void*)item->data());
+    }
+    return QVariant();
+}
+
+Qt::ItemFlags plotModel::flags(const QModelIndex &index) const
+{
+    if (!index.isValid())
+        return 0;
+
+    return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+}
+
+QVariant plotModel::headerData(int section, Qt::Orientation orientation,
+                               int role) const
+{
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
+        if (section == 0) return trn("Plot");
+        else if (section == 1) return trn("Info");
+        return QVariant();
+    }
+    return QVariant();
+}
+
+void plotModel::addItem(curve *PD) {
+    let(Item, new plotItem(PD, rootItem));
+    rootItem->appendChild(Item);
+    //let(Index, createIndex(Item->row(), 0, rootItem));
+    //dbg("%d", Item->row());
+    //dbg("beg");
+    //emit dataChanged(Index, Index);
+    reset();
+    //dbg("end");
+    //insertRow(row, createIndex(rootItem->row(), 0, rootItem));
+    //emit rowsInserted(createIndex(rootItem->row(), 0, rootItem), row, row);
+}
+
+QVector<curve*> plotModel::plots() {
+    QVector<curve*> R;
+    times(I, this->rowCount()) {
+        curve *PD = (curve*)qVariantValue<void*>(this->data(this->index(I, 0), Qt::UserRole));
+        R.append(PD);
+        //dbg("%s", qPrintable(PD->Name));
+    }
+    return R;
+}
+
+
+#ifndef PLOTTREEMODEL_H
+#define PLOTTREEMODEL_H
+
+#include <QAbstractTableModel>
+
+class curve;
+class plotItem;
+
+class plotModel : public QAbstractItemModel
+{
+    Q_OBJECT
+
+public:
+    plotModel(QObject *parent = 0);
+    ~plotModel();
+
+    QVariant data(const QModelIndex &index, int role) const;
+    Qt::ItemFlags flags(const QModelIndex &index) const;
+    QVariant headerData(int section, Qt::Orientation orientation,
+                        int role = Qt::DisplayRole) const;
+    QModelIndex index(int row, int column,
+                      const QModelIndex &parent = QModelIndex()) const;
+    QModelIndex parent(const QModelIndex &index) const;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const;
+    void addItem(curve *PD);
+
+    QVector<curve*> plots();
+
+private:
+    plotItem *rootItem;
+};
+
+#endif // PLOTTREEMODEL_H
+
+#include "plotModel.h"
+#include "mainWindow.h"
+
+
+
+class plotItem
+{
+public:
+    plotItem(curve *D, plotItem *parent);
+    ~plotItem();
+
+    void appendChild(plotItem *child);
+
+    plotItem *child(int row);
+    int childCount() const;
+    curve *data() const;
+    int row() const;
+    plotItem *parent();
+
+private:
+    QList<plotItem*> childItems;
+    plotItem *parentItem;
+    curve *Data;
+};
+
+plotItem::plotItem(curve *D, plotItem *parent)
+{
+    parentItem = parent;
+    Data = D;
+}
+
+plotItem::~plotItem()
+{
+    qDeleteAll(childItems);
+}
+
+void plotItem::appendChild(plotItem *item)
+{
+    childItems.append(item);
+}
+
+plotItem *plotItem::child(int row)
+{
+     return childItems.value(row);
+}
+
+int plotItem::childCount() const
+{
+     return childItems.count();
+}
+
+int plotItem::row() const
+{
+     if (parentItem)
+         return parentItem->childItems.indexOf(const_cast<plotItem*>(this));
+
+     return 0;
+}
+
+curve *plotItem::data() const
+{
+    return Data;
+}
+
+plotItem *plotItem::parent()
+{
+    return parentItem;
+}
+
+
+
+
+
+plotModel::plotModel(QObject *parent)
+    : QAbstractItemModel(parent)
+{
+    rootItem = new plotItem(0, 0);
+}
+
+plotModel::~plotModel()
+{
+    delete rootItem;
+}
+
+QModelIndex plotModel::index(int row, int column, const QModelIndex &parent)
+            const
+{
+    if (!hasIndex(row, column, parent))
+        return QModelIndex();
+
+    plotItem *parentItem;
+
+    if (!parent.isValid())
+        parentItem = rootItem;
+    else
+        parentItem = static_cast<plotItem*>(parent.internalPointer());
+
+    plotItem *childItem = parentItem->child(row);
+    if (childItem)
+        return createIndex(row, column, childItem);
+    else
+        return QModelIndex();
+}
+
+QModelIndex plotModel::parent(const QModelIndex &index) const
+{
+    if (!index.isValid())
+        return QModelIndex();
+
+    plotItem *childItem = static_cast<plotItem*>(index.internalPointer());
+    plotItem *parentItem = childItem->parent();
+
+    if (parentItem == rootItem)
+        return QModelIndex();
+
+    return createIndex(parentItem->row(), 0, parentItem);
+}
+
+int plotModel::rowCount(const QModelIndex &parent) const
+{
+    plotItem *parentItem;
+    if (parent.column() > 0)
+        return 0;
+
+    if (!parent.isValid())
+        parentItem = rootItem;
+    else
+        parentItem = static_cast<plotItem*>(parent.internalPointer());
+
+    return parentItem->childCount();
+}
+
+int plotModel::columnCount(const QModelIndex &) const
+{
+    return 2;
+
+    /*if (parent.isValid())
+        return static_cast<TreeItem*>(parent.internalPointer())->columnCount();
+    else
+        return rootItem->columnCount();*/
+}
+
+QVariant plotModel::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid())
+        return QVariant();
+
+    plotItem *item = static_cast<plotItem*>(index.internalPointer());
+
+    curve *PD = item->data();
+    if (role == Qt::DisplayRole) {
+        if (index.column() == 0) return PD->name();
+        else if (index.column() == 1) return PD->op();
+        return QVariant();
+    }
+    else if (role == Qt::UserRole) {
+        return qVariantFromValue((void*)item->data());
+    }
+    return QVariant();
+}
+
+Qt::ItemFlags plotModel::flags(const QModelIndex &index) const
+{
+    if (!index.isValid())
+        return 0;
+
+    return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+}
+
+QVariant plotModel::headerData(int section, Qt::Orientation orientation,
+                               int role) const
+{
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
+        if (section == 0) return trn("Plot");
+        else if (section == 1) return trn("Info");
+        return QVariant();
+    }
+    return QVariant();
+}
+
+void plotModel::addItem(curve *PD) {
+    let(Item, new plotItem(PD, rootItem));
+    rootItem->appendChild(Item);
+    //let(Index, createIndex(Item->row(), 0, rootItem));
+    //dbg("%d", Item->row());
+    //dbg("beg");
+    //emit dataChanged(Index, Index);
+    reset();
+    //dbg("end");
+    //insertRow(row, createIndex(rootItem->row(), 0, rootItem));
+    //emit rowsInserted(createIndex(rootItem->row(), 0, rootItem), row, row);
+}
+
+QVector<curve*> plotModel::plots() {
+    QVector<curve*> R;
+    times(I, this->rowCount()) {
+        curve *PD = (curve*)qVariantValue<void*>(this->data(this->index(I, 0), Qt::UserRole));
+        R.append(PD);
+        //dbg("%s", qPrintable(PD->Name));
+    }
+    return R;
+}
+
+
+    foreach(operation *O, Ops) {
+        //let(Sub, new QStandardItem(O->name()));
+        let(Sub, new QStandardItem());
+        Row->appendRow(Sub);
+        QModelIndex Index = Sub->index();
+        let(OpButton, new QPushButton(O->name()));
+        QFont Font = OpButton->font();
+        Font.setPointSize(7);
+        OpButton->setFont(Font);
+        //OpButton->setMinimumSize(140,32);
+        OpButton->setObjectName(QString::number(C->id()) + " " + O->idName());
+        connect(OpButton, SIGNAL(clicked()), this, SLOT(applyOperation()));
+        PlotList->setIndexWidget(Index, OpButton);
+    }
+
+
+
+
+    QCheckBox *ShowPeaks, *ShowDerivatives;
+    QLineEdit *PeakThreshold, *CutoffThreshold;
+
+
+
+
+
+
+37double simpsons_rule(vector<double>& x_list, vector<double>& y_list) {
+38  /*
+39  Integrate a function given vectors of x and y data using Simpson's rule.
+40  Assumes that x values are equally spaced! The looping in this implementation
+41  requires that x_list and y_list contain an odd number of elements, so if the
+42  number of elements is even, then the very last bin will be integrated using
+43  the trapezoid rule.
+44
+45  */
+46  double integral = 0;
+47  for (int i = 1; i < x_list.size() - 1; i += 2) {
+48    integral += (x_list[i+1] - x_list[i-1]) / 6 *
+49                (y_list[i-1] + 4 * y_list[i] + y_list[i+1]);
+50  }
+51  if (x_list.size() % 2 == 0) {
+52    int i = x_list.size() - 1;
+53    integral += (y_list[i-1] +  y_list[i]) * (x_list[i] - x_list[i-1]) / 2;
+54  }
+55  return integral;
+56}
+57
+
+
+
+
+QTabWidget and QStackedWidget could be used to implements tabbed interface; QFrame could be useful too
+
+To implement editable tab bar: subclass QTabBar, catch necessary event(s), provide a temporary QLineEdit at QTabBar::tabRect() filled with QTabBar::tabText(). Once QLineEdit::editingFinished() is emitted, use QTabBar::setTabText() and get rid of the temporary QLineEdit.
+
+Note that you do not even need to subclass QTabWidget. You can do it by creating a QObject-derived class (lets call it TabRenamerCharm), and use the eventFilter system to listen in on the events send to the QTabBar widget. The QTabBar is the widget you’d need to subclass anyway, as QTabWidget uses that one internally too. This way you can make your renaming work on QTabBar and QTabWidget, as well as any external widget derived from it or embedding it. Downside is of course that you have an additional object to handle, and you need to connect to that instead of the actual tab widget.
+
+The TabRenamerCharm class can encapsulate the process outlined in your post, and provide a signal to notifify anyone interested on the change. Interesting corner case is of course a tab with east or west orientation :-)
+
+Just for the fun of it, I tried implementing the aproach above. It works, and it works quite nicely I might add.
+    bool TabRenamerCharm::eventFilter(QObject * o, QEvent * e)
+    {
+        bool result = QObject::eventFilter(o, e);
+
+        if (o == m_tabBar) {
+            if (e->type() == QEvent::MouseButtonPress) {
+                //see if the user is trying to move away from the editing by clicking another tab
+                QMouseEvent* me = static_cast<QMouseEvent*>(e);
+                int clickedTabId = m_tabBar->tabAt(me->pos());
+                if (m_currentTab!=-1 && m_currentTab != clickedTabId)
+                    editFinished();
+                return false;
+            }
+            if (e->type() == QEvent::MouseButtonDblClick) {
+                //perhaps we need to start a new name editing action...
+                QMouseEvent* me = static_cast<QMouseEvent*>(e);
+                int clickedTabId = m_tabBar->tabAt(me->pos());
+                if (clickedTabId == -1)
+                    return result;
+                if (!m_allowRenamingDisabledTabs && !m_tabBar->isTabEnabled(clickedTabId))
+                    return result;
+                triggerRename(clickedTabId);
+                return true; //no further handling of this event is required
+            }
+        }
+
+        //handle some events on the line edit to make it behave itself nicely as a rename editor
+        if (o == m_lineEdit) {
+            if (e->type() == QEvent::KeyPress) {
+                QKeyEvent* ke = static_cast<QKeyEvent*>(e);
+                if (ke->key() == Qt::Key_Escape) {
+                    m_lineEdit->deleteLater();
+                    return true; //no further handling of this event is required
+                }
+            }
+        }
+
+        return result;
+    }
+
+
+If anyone would be interested in that problem: only method I found working is to remember i. e. QTabBar::tabRect(0).left(), and check in reimplemented paintEvent() if it changes - if it does and QLineEdit is visible - hide it.
+
+if another button on the widget is pressed, or the widget is resized, the QLineEdit looses focus. So you could just override QLineEdit::focusOutEvent() and close/hide the (now custom) line edit.
+I did my own implementation of this poblem, but the QLineEdit is just floating above the tab. also it closes itself if its done and if the user presses esc, the entered text is discarded. an event "publishText" is emitted, if the user successfully entered text. Its not perfect, but it works. If you have any suggestions, go ahead.
+
+    class IndependentLineEdit: public QLineEdit {
+    Q_OBJECT
+    public:
+    IndependentLineEdit(QWidget* parent = 0);
+    IndependentLineEdit(const QString & contents, QWidget* parent = 0 );
+    public slots:
+    void setText(const QString &text);
+    signals:
+    void newTextEntered(const QString &text);
+    protected:
+    void keyPressEvent(QKeyEvent* event);
+    void focusOutEvent(QFocusEvent* event);
+    private slots:
+    void publishText();
+    void setupWidget();
+    };
+
+    IndependentLineEdit::IndependentLineEdit(QWidget* parent) :
+    QLineEdit(parent) {
+    setupWidget();
+    }
+
+    IndependentLineEdit::IndependentLineEdit(const QString & contents, QWidget* parent) :
+    QLineEdit(contents, parent) {
+    setupWidget();
+    }
+
+    void IndependentLineEdit::setText(const QString &text) {
+    QLineEdit::setText(text);
+    setFocus();
+    selectAll();
+    show();
+    }
+
+    void IndependentLineEdit::keyPressEvent(QKeyEvent* event) {
+    QLineEdit::keyPressEvent(event);
+    if (event->key() == Qt::Key_Escape) {
+    setText("");
+    hide();
+    }
+    }
+
+    void IndependentLineEdit::focusOutEvent(QFocusEvent* event) {
+    QLineEdit::focusOutEvent(event);
+    emit editingFinished();
+    }
+
+    void IndependentLineEdit::publishText() {
+    if (text() != "") {
+    emit newTextEntered(text());
+    }
+    hide();
+    }
+
+    void IndependentLineEdit::setupWidget() {
+    connect(this, SIGNAL(editingFinished()), this, SLOT(publishText()));
+    setWindowFlags(Qt::CustomizeWindowHint);
+    }
+
+    class EditableTabBar: public QTabBar {
+    Q_OBJECT
+    public:
+    EditableTabBar(QWidget* parent = 0);
+    virtual ~EditableTabBar();
+    signals:
+    void tabTextChanged(int index, const QString &text);
+    protected:
+    void mouseDoubleClickEvent(QMouseEvent* event);
+    private slots:
+    void setCurrentTabText(const QString &text);
+    private:
+    IndependentLineEdit _edit;
+    };
+
+    EditableTabBar::EditableTabBar(QWidget* parent) :
+    QTabBar(parent), _edit("", 0) {
+    connect(&_edit, SIGNAL(newTabTextEntered(const QString &)), this,
+    SLOT( setCurrentTabText(const QString &)));
+    }
+
+    EditableTabBar::~EditableTabBar() {
+    // TODO Auto-generated destructor stub
+    }
+
+    void EditableTabBar::mouseDoubleClickEvent(QMouseEvent* event) {
+    _edit.setText(tabText(currentIndex()));
+    _edit.move(mapToGlobal(event->pos()));
+    }
+
+    void EditableTabBar::setCurrentTabText(const QString &text) {
+    setTabText(currentIndex(), text);
+    emit tabTextChanged(currentIndex(), text);
+    }
+
+    class EditableTabWidget : public QTabWidget {
+    Q_OBJECT
+    public:
+    EditableTabWidget(QWidget* parent = 0);
+    signals:
+    void tabTextChanged(int index,const QString &text);
+    };
+
+    EditableTabWidget::EditableTabWidget(QWidget* parent) :
+    QTabWidget(parent) {
+    EditableTabBar* t = new EditableTabBar();
+    connect(t, SIGNAL(tabTextChanged(int, const QString &)), this,
+    SIGNAL(tabTextChanged(int, const QString &)));
+    setTabBar(t);
+    }
+
+
+
+
+void plot::resizeEvent(QResizeEvent */*event*/) {
+    // quick hack to maintain aspect ratio
+    //int W = event->size().width();
+    //int H = event->size().height();
+    //if (W != H*2) resize(H*2, H);
+}
+
+
+
+
+    QFileSystemModel *FSM = new QFileSystemModel;
+    FSM->setRootPath(QDir::currentPath());
+    QTreeView *FSTreeView = new QTreeView;
+    FSTreeView->setModel(FSM);
+    MainLayout->addWidget(FSTreeView);
+    FSTreeView->setRootIndex(FSM->index(QDir::currentPath()));
+
+
+
+
+
+class renameDialog : public QDialog {
+    Q_OBJECT
+public:
+    renameDialog(QWidget *Parent, QString OldName);
+    QString pickedName() {return PickedName;}
+
+private slots:
+    void ok();
+    void cancel();
+
+private:
+    QLineEdit *Edit;
+    QString PickedName;
+};
+
+renameDialog::renameDialog(QWidget *Parent, QString OldName)
+    : QDialog(Parent), PickedName(OldName)
+{
+    Edit = new QLineEdit(OldName);
+    let(MainLayout, new QVBoxLayout);
+
+    let(ButtonsLayout, new QHBoxLayout);
+    ButtonsLayout->addStretch();
+
+    let(PickButton, new QPushButton(trn("&OK")));
+    connect(PickButton, SIGNAL(clicked()), this, SLOT(ok()));
+    ButtonsLayout->addWidget(PickButton);
+
+    let(CancelButton, new QPushButton(trn("Ca&ncel")));
+    connect(CancelButton, SIGNAL(clicked()), this, SLOT(cancel()));
+    ButtonsLayout->addWidget(CancelButton);
+
+    MainLayout->addWidget(new QLabel("New Name:"));
+    MainLayout->addWidget(Edit);
+    MainLayout->addLayout(ButtonsLayout);
+
+    this->setLayout(MainLayout);
+}
+
+void renameDialog::ok() {
+    PickedName = Edit->text();
+    accept();
+}
+
+void renameDialog::cancel() {
+    reject();
+}
+
+
+
+
